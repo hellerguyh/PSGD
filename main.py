@@ -25,7 +25,19 @@ wandb.config.lr = lr
 
 criterion = nn.CrossEntropyLoss(reduction = 'mean')
 optimizer = optim.SGD(model_ft.parameters(), lr)
-scheduler = optim.lr_scheduler.StepLR(optimizer, 1, gamma = 0.75)
+schd_step = 1
+schd_gamma = 0.75
+scheduler = None#optim.lr_scheduler.StepLR(optimizer, schd_step, gamma = schd_gamma)
 
-model_ft = train_model(model, criterion, optimizer, scheduler, lr , 8)
+if scheduler:
+    wandb.config.scheduler_step = schd_step
+    wandb.config.scheduler_gamma = schd_gamma
+else:
+    wandb.config.scheduler_step = -1
+    wandb.config.scheduler_gamma = -1
+
+POLLING = True
+wandb.config.polling = POLLING
+
+model_ft = train_model(model, criterion, optimizer, scheduler, lr , 8, POLLING)
 print("Done")

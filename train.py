@@ -55,7 +55,7 @@ def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr):
                step = len(loss_arr[phase]) - 1)
 
 def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
-             bs, dbg_inputs, dbg_labels):
+             bs, dbg_inputs, dbg_labels, polling = True):
     model_ft = model.nn
     
     with torch.no_grad():
@@ -82,7 +82,10 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
         if trloss > rloss:
             unusable_sample = True
     
-    eff_lr = scheduler.get_last_lr()[0]
+    if scheduler:
+        eff_lr = scheduler.get_last_lr()[0]
+    else:
+        eff_lr = lr
     with torch.no_grad():
         cp_1 = model.createCheckPoint()
         found_noise = False
@@ -90,8 +93,9 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
             std = eff_lr*SIGMA*CLIP_V
             model.addNoise(std, device, bs)
 
-            #found_noise = True
-            #break
+            if polling is False:
+                found_noise = True
+                break
 
             troutputs = model_ft(rinputs)
             trloss = criterion(troutputs, rlabels)
@@ -107,7 +111,8 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
     
     return found_noise, unusable_sample
 
-def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25):
+def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25,
+                polling = True):
 
 
     wandb.config.max_tries = MAX_TRIES
@@ -159,7 +164,9 @@ def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25):
                                                             loss, optimizer, 
                                                             scheduler, device,
                                                             criterion, lr,
-                                                            dl.batch_size, inputs, labels)
+                                                            dl.batch_size,
+                                                            inputs, labels,
+                                                            polling)
                     skipped_batches += int(found_noise == False)
                     grad_pos_cntr += int(unusable_sample == True)
 
