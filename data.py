@@ -2,6 +2,8 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader
 
+CODE_TEST = False
+
 def getTransforms():
     return torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                            torchvision.transforms.ToTensor()])
@@ -25,6 +27,9 @@ def getDataLoaders(t_bs, v_bs, r_bs):
     data = torchvision.datasets.MNIST(root = './dataset/',
                                                train = True, download = True,
                                                transform = getTransforms())
+    if CODE_TEST:
+        subset = list(range(0,len(data), int(len(data)/100)))
+        data = torch.utils.data.Subset(data, subset)
     train_loader = torch.utils.data.DataLoader(data,
                                               batch_size = t_bs,
                                               shuffle = True,
