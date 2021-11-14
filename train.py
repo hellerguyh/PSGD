@@ -1,4 +1,5 @@
 import torch
+import wandb
 from data import *
 from torch.nn.utils import clip_grad_value_
 
@@ -48,6 +49,10 @@ def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr):
     loss_arr[phase].append(epoch_loss)
     print('{} Loss: {:.4f} Acc: {:.4f}'.format(
            phase, epoch_loss, epoch_acc))
+    wandb.log({"Epoch" : len(loss_arr[phase]) - 1,
+                phase + " Loss" : epoch_loss,
+                phase + " Accuracy" : epoch_acc},
+               step = len(loss_arr[phase]) - 1)
 
 def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
              bs, dbg_inputs, dbg_labels):
@@ -103,6 +108,14 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
     return found_noise, unusable_sample
 
 def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25):
+
+
+    wandb.config.max_tries = MAX_TRIES
+    wandb.config.clip_v = CLIP_V
+    wandb.config.sigma = SIGMA
+    wandb.config.train_bs = T_BS
+    wandb.config.val_bs = V_BS
+    wandb.config.ref_bs = R_BS
 
     t_dl, v_dl, r_dl = getDataLoaders(T_BS, V_BS, R_BS)
     dataloaders = {'train' : t_dl, 'val' : v_dl}
@@ -161,3 +174,8 @@ def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25):
                 grad_pos_arr.append(grad_pos_cntr/len(dl))
                 print("% skipped_batches: " + str(skipped_batches*100/len(dl)))
                 print("% Unusable batches :"  + str(grad_pos_cntr*100/len(dl)))
+
+                wandb.log({
+                           "% Skipped Batches" : skipped_batches*100/len(dl),
+                           "% Unusable Batches" : grad_pos_cntr*100/len(dl)},
+                           step = len(loss_arr[phase]) - 1)
