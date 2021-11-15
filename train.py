@@ -3,13 +3,6 @@ import wandb
 from data import *
 from torch.nn.utils import clip_grad_value_
 
-MAX_TRIES = 50
-CLIP_V = 1
-SIGMA = 4
-
-T_BS = 64
-V_BS = 128
-R_BS = 256
 
 def logProgress(num_batches):
     idx = 0
@@ -55,7 +48,7 @@ def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr):
                step = len(loss_arr[phase]) - 1)
 
 def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
-             bs, dbg_inputs, dbg_labels, polling = True):
+             bs, dbg_inputs, dbg_labels):
     model_ft = model.nn
     
     with torch.no_grad():
@@ -72,7 +65,7 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
         '''
     
     loss.backward()
-    clip_grad_value_(model_ft.parameters(), CLIP_V)
+    clip_grad_value_(model_ft.parameters(), wandb.config.clip_v)
     optimizer.step()
     
     unusable_sample = False
@@ -89,11 +82,11 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
     with torch.no_grad():
         cp_1 = model.createCheckPoint()
         found_noise = False
-        for i in range(MAX_TRIES):
-            std = eff_lr*SIGMA*CLIP_V
+        for i in range(wandb.config.max_tries):
+            std = eff_lr*wandb.config.sigma*wandb.config.clip_v
             model.addNoise(std, device, bs)
 
-            if polling is False:
+            if wandb.config.polling is False:
                 found_noise = True
                 break
 
@@ -111,18 +104,11 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
     
     return found_noise, unusable_sample
 
-def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25,
-                polling = True):
+def train_model(model, criterion, optimizer, scheduler):
 
-
-    wandb.config.max_tries = MAX_TRIES
-    wandb.config.clip_v = CLIP_V
-    wandb.config.sigma = SIGMA
-    wandb.config.train_bs = T_BS
-    wandb.config.val_bs = V_BS
-    wandb.config.ref_bs = R_BS
-
-    t_dl, v_dl, r_dl = getDataLoaders(T_BS, V_BS, R_BS)
+    t_dl, v_dl, r_dl = getDataLoaders(wandb.config.train_bs, 
+                                      wandb.config.val_bs,
+                                      wandb.config.ref_bs)
     dataloaders = {'train' : t_dl, 'val' : v_dl}
     rdl_itr = getULItr(r_dl)
 
@@ -133,6 +119,7 @@ def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25,
     loss_arr = {'train':[],'val':[]}
     skipped_batches_arr = []
     grad_pos_arr = []
+    num_epochs = wandb.config.epochs
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -163,10 +150,10 @@ def train_model(model, criterion, optimizer, scheduler, lr ,num_epochs=25,
                     found_noise, unusable_sample = gradStep(model, rdl_itr,
                                                             loss, optimizer, 
                                                             scheduler, device,
-                                                            criterion, lr,
+                                                            criterion,
+                                                            wandb.config.lr,
                                                             dl.batch_size,
-                                                            inputs, labels,
-                                                            polling)
+                                                            inputs, labels)
                     skipped_batches += int(found_noise == False)
                     grad_pos_cntr += int(unusable_sample == True)
 
