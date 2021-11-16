@@ -27,7 +27,9 @@ DEFAULT_PARAMS = {
     'val_bs'    : 128,
     'ref_bs'    : 256,
     'lr'        : 0.001,
-    'epochs'    : 8
+    'epochs'    : 8,
+    'nn_type'   : 'ResNet34',
+    'db'        : 'CIFAR10'
 }
 
 def main(config=None):
@@ -37,14 +39,14 @@ def main(config=None):
            project = 'PolledSGD',\
            notes = 'This is a test run',\
            tags = ['Test Run', 'LOCAL', 'SUBSET_DATA'],\
-           entity ='hellerguyh',
+           entity = 'hellerguyh',
            config = config):
 
         for k in DEFAULT_PARAMS:
             if not k in wandb.config:
                 wandb.config[k] = DEFAULT_PARAMS[k]
 
-        model = NoisyNN()
+        model = NoisyNN(wandb.config.nn_type)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model_ft = model.nn
         model_ft.to(device)

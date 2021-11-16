@@ -5,26 +5,33 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 import copy
+import torchvision as tv
 
 class NoisyNN(object):
-    def __init__(self):
-        self.nn = nn.Sequential(OrderedDict([
-                                ('conv1', nn.Conv2d(1, 6, 5)),
-                                ('relu1', nn.ReLU()),
-                                ('pool1', nn.MaxPool2d(2, 2)),
-                                ('conv2', nn.Conv2d(6, 16, 5)),
-                                ('relu2', nn.ReLU()),
-                                ('pool2', nn.MaxPool2d(2, 2)),
-                                ('conv3', nn.Conv2d(in_channels = 16, 
-                                                    out_channels = 120, 
-                                                    kernel_size = 5)),
-                                ('flatn', nn.Flatten()), 
-                                ('relu3', nn.ReLU()),
-                                ('line4', nn.Linear(120, 84)),
-                                ('relu4', nn.ReLU()),
-                                ('line5', nn.Linear(84, 10)),
-                                ('softm', nn.LogSoftmax(dim = -1))
-                                ]))
+    def __init__(self, nn_type = 'LeNet'):
+        if nn_type == 'LeNet':
+            self.nn = nn.Sequential(OrderedDict([
+                                    ('conv1', nn.Conv2d(1, 6, 5)),
+                                    ('relu1', nn.ReLU()),
+                                    ('pool1', nn.MaxPool2d(2, 2)),
+                                    ('conv2', nn.Conv2d(6, 16, 5)),
+                                    ('relu2', nn.ReLU()),
+                                    ('pool2', nn.MaxPool2d(2, 2)),
+                                    ('conv3', nn.Conv2d(in_channels = 16,
+                                                        out_channels = 120,
+                                                        kernel_size = 5)),
+                                    ('flatn', nn.Flatten()),
+                                    ('relu3', nn.ReLU()),
+                                    ('line4', nn.Linear(120, 84)),
+                                    ('relu4', nn.ReLU()),
+                                    ('line5', nn.Linear(84, 10)),
+                                    ('softm', nn.LogSoftmax(dim = -1))
+                                    ]))
+        elif nn_type == 'ResNet34':
+            self.nn = tv.models.resnet34(pretrained = False, num_classes = 10)
+        else:
+            raise NotImplementedError(str(nn_type) +
+                                      " model is not implemented")
 
     '''
     Returns a copy of the module weights
