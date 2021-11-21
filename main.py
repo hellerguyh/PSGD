@@ -19,17 +19,18 @@ from train import *
 #EPOCHS = 8
 
 DEFAULT_PARAMS = {
-    'polling'   : True,
-    'max_tries' : 50,
-    'clip_v'    : 1,
-    'sigma'     : 4,
-    'train_bs'  : 64,
-    'val_bs'    : 128,
-    'ref_bs'    : 256,
-    'lr'        : 0.001,
-    'epochs'    : 8,
-    'nn_type'   : 'ResNet34',
-    'db'        : 'CIFAR10'
+    'polling'   : True, #Poll to check for best noise
+    'all_samples' : True, #Take also batches which failed to improve
+    'max_tries' : 50, #Maximum tries creating noise
+    'clip_v'    : 1, #Clipping the gradients to this value
+    'sigma'     : 4, #Noise factor
+    'train_bs'  : 64, #Train batch size
+    'val_bs'    : 128, #Valdiation batch size
+    'ref_bs'    : 256, #reference batch size
+    'lr'        : 0.001, #learning rate
+    'epochs'    : 8, #Number of epochs to run
+    'nn_type'   : 'ResNet34', #backbone
+    'db'        : 'CIFAR10' #database
 }
 
 def main(config=None):

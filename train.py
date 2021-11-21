@@ -95,13 +95,12 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
             if trloss < rloss:
                 found_noise = True
                 break
-            else:
+            elif i < wandb.config.max_tries - 1:
                 model.loadCheckPoint(cp_1)
     
-    if found_noise is False:
+    if (found_noise is False) and (wandb.config.all_samples is False):
         model.loadCheckPoint(cp_0)
-    
-    
+
     return found_noise, unusable_sample
 
 def train_model(model, criterion, optimizer, scheduler):
