@@ -36,7 +36,7 @@ def runModel(model_ft, inputs, labels, loss_sum, corr_sum, device, criterion):
     loss_sum += loss.item()
     return loss, corr_sum, loss_sum
 
-def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr):
+def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr, step):
     epoch_loss = loss_sum / ds_size 
     epoch_acc = corr_sum.double() / ds_size
     loss_arr[phase].append(epoch_loss)
@@ -45,10 +45,10 @@ def logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr):
     wandb.log({"Epoch" : len(loss_arr[phase]) - 1,
                 phase + " Loss" : epoch_loss,
                 phase + " Accuracy" : epoch_acc},
-               step = len(loss_arr[phase]) - 1)
+                step = step)
 
 def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
-             bs, dbg_inputs, dbg_labels):
+             bs, dbg_inputs, dbg_labels, step):
     model_ft = model.nn
     
     with torch.no_grad():
@@ -68,12 +68,19 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
     clip_grad_value_(model_ft.parameters(), wandb.config.clip_v)
     optimizer.step()
     
+    with torch.no_grad():
+        toutputs = model_ft(dbg_inputs)
+        tloss = criterion(toutputs, dbg_labels)
+        wandb.log({"loss-diff" : loss - tloss}, step = step)
+
     unusable_sample = False
     with torch.no_grad():
         troutputs = model_ft(rinputs)
         trloss = criterion(troutputs, rlabels)
         if trloss > rloss:
             unusable_sample = True
+        wandb.log({"rloss-diff" : rloss - trloss},
+                   step = step)
     
     if scheduler:
         eff_lr = scheduler.get_last_lr()[0]
@@ -86,18 +93,22 @@ def gradStep(model, rdl_itr, loss, optimizer, scheduler, device, criterion, lr,
             std = eff_lr*wandb.config.sigma*wandb.config.clip_v
             model.addNoise(std, device, bs)
 
-            if wandb.config.polling is False:
-                found_noise = True
-                break
-
             troutputs = model_ft(rinputs)
             trloss = criterion(troutputs, rlabels)
-            if trloss < rloss:
+
+            if (trloss < rloss) or (wandb.config.polling is False):
                 found_noise = True
                 break
             elif i < wandb.config.max_tries - 1:
                 model.loadCheckPoint(cp_1)
+
+    wandb.log({"noised-rloss-diff" : rloss - trloss}, step = step)
     
+    with torch.no_grad():
+        toutputs = model_ft(dbg_inputs)
+        tloss = criterion(toutputs, dbg_labels)
+        wandb.log({"noised-loss-diff" : loss - tloss}, step = step)
+
     if (found_noise is False) and (wandb.config.all_samples is False):
         model.loadCheckPoint(cp_0)
 
@@ -119,6 +130,7 @@ def train_model(model, criterion, optimizer, scheduler):
     skipped_batches_arr = []
     grad_pos_arr = []
     num_epochs = wandb.config.epochs
+    step = 0
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
@@ -152,15 +164,17 @@ def train_model(model, criterion, optimizer, scheduler):
                                                             criterion,
                                                             wandb.config.lr,
                                                             dl.batch_size,
-                                                            inputs, labels)
+                                                            inputs, labels,
+                                                            step)
                     skipped_batches += int(found_noise == False)
                     grad_pos_cntr += int(unusable_sample == True)
+                    step += 1
 
             if phase == 'train' and scheduler is not None:
                 scheduler.step()
 
             ds_size = len(dl)*dl.batch_size
-            logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr)
+            logEpochResult(loss_sum, corr_sum, ds_size, phase, loss_arr, step)
 
             if phase == 'train':
                 skipped_batches_arr.append(skipped_batches/len(dl))
@@ -171,4 +185,4 @@ def train_model(model, criterion, optimizer, scheduler):
                 wandb.log({
                            "% Skipped Batches" : skipped_batches*100/len(dl),
                            "% Unusable Batches" : grad_pos_cntr*100/len(dl)},
-                           step = len(loss_arr[phase]) - 1)
+                           step = step)
