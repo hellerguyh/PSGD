@@ -6,6 +6,51 @@ import torch.nn as nn
 from collections import OrderedDict
 import copy
 import torchvision as tv
+from torch.nn.utils import clip_grad_value_
+from torch.optim.optimizer import Optimizer, required
+
+class NoisyOptim(Optimizer):
+    def __init__(self, params, lr = required, clip_v = 0, noise_std = 0,
+                 cuda_device_id = 0):
+        self.cuda_device_id = cuda_device_id
+        defaults = dict(lr = lr)
+        self.modelParams = params
+        self.noise_std = noise_std
+        self.clip_v = clip_v
+        super(NoisyOptim, self).__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, closure = None):
+        if self.clip_v > 0:
+            clip_grad_value_(self.modelParams, self.clip_v)
+
+        cid = self.cuda_device_id
+        if cid == -1:
+            device = torch.device("cpu")
+        else:
+            device = torch.device("cuda:" + str(cid)
+                                  if torch.cuda.is_available() else "cpu")
+        
+        for group in self.param_groups:
+            params_with_grad = []
+            d_p_list = []
+            lr = group['lr']
+
+            for p in group['params']:
+                if p.grad is not None:
+                    params_with_grad.append(p)
+                    d_p_list.append(p.grad)
+
+            for i, param in enumerate(params_with_grad):
+                d_p = d_p_list[i]
+                param.add_(d_p, alpha = -lr)
+
+                if self.noise_std > 0:
+                    sigma = self.noise_std 
+                    mean = torch.zeros(param.shape)
+                    noise = torch.normal(mean, self.noise_std).to(device)
+                    param.add_(noise, alpha = -lr)
+
 
 class NoisyNN(object):
     def __init__(self, nn_type = 'LeNet'):
@@ -29,6 +74,8 @@ class NoisyNN(object):
                                     ]))
         elif nn_type == 'ResNet34':
             self.nn = tv.models.resnet34(pretrained = False, num_classes = 10)
+        elif nn_type == 'ResNet18':
+            self.nn = tv.models.resnet18(pretrained = False, num_classes = 10)
         else:
             raise NotImplementedError(str(nn_type) +
                                       " model is not implemented")
@@ -39,18 +86,24 @@ class NoisyNN(object):
     '''
     def createCheckPoint(self):
         return copy.deepcopy(dict(self.nn.named_parameters()))
+
     def loadCheckPoint(self, cp):
         netp = dict(self.nn.named_parameters())
         for name in cp:
             netp[name].data.copy_(cp[name].data)
 
-    def addNoise(self, std, device, bs):
-        # Assumes that clipping is done in the batch level, and the loss is 
-        # averaged over the batch
-        with torch.no_grad():
-            for param in self.nn.parameters():
-                mean = torch.zeros(param.shape)
-                std_tensor = torch.ones(param.shape)*std
-                noise = torch.normal(mean, std_tensor).to(device)
-                added_noise = noise
-                param += added_noise
+    def saveWeights(self, path, use_wandb = False, wandb_run = None):
+        torch.save(self.nn.state_dict(), path)
+        if use_wandb:
+            artifact = wandb.Artifact('model', type='model')
+            artifact.add_file(path)
+            wandb_run.log_artifact(artifact)
+            wandb_run.join()
+
+    def loadWeights(self, path, use_wandb = False, wandb_path = None,
+                    wandb_run = None):
+        if use_wandb:
+            artifact = wandb_run.use_artifact(wandb_path, type = 'model')
+            artifact_dir = artifact.download(path)
+            wandb_run.join()
+        self.nn.load_state_dict(torch.load(path))

@@ -3,13 +3,59 @@ import torchvision
 from torch.utils.data import DataLoader
 import wandb
 
-CODE_TEST = False
+from PIL import Image
+import numpy as np
+
+CODE_TEST = True
 
 def getTransforms():
     return torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                            torchvision.transforms.ToTensor()])
 
 
+nnType2DsName = {
+    'LeNet5'    : 'MNIST',
+    'ResNet18'  : 'CIFAR10',
+    'ResNet18-100'  : 'CIFAR100',
+}
+
+DatasetMap = {
+              'MNIST': torchvision.datasets.MNIST,
+              'CIFAR10' : torchvision.datasets.CIFAR10,
+              'CIFAR100' : torchvision.datasets.CIFAR100
+             }
+
+
+def getTransforms():
+    return torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
+                                           torchvision.transforms.ToTensor()])
+
+'''
+getDL - gets a dataloader without going through wandb.config
+@bs: block size
+@train: if True it takes the train dataset
+@ds_name: MNIST/CIFAR10/...
+'''
+def getDL(bs, train, ds_name):
+    db = DatasetMap[ds_name]
+    data = db(root = './dataset/',
+              train = train, download = True,
+              transform = getTransforms())
+
+    if CODE_TEST:
+        subset = list(range(0,len(data), int(len(data)/1000)))
+        data = torch.utils.data.Subset(data, subset)
+
+    if ds_name == "MNIST":
+        torch.set_num_threads(4)
+        NW = 4
+    else:
+        NW = 4
+
+    loader = torch.utils.data.DataLoader(data, batch_size = bs, shuffle = True,
+                                         num_workers = NW, pin_memory = True)
+
+    return loader, len(data)
 
 '''
 Iterator that starts again upon StopIteration
@@ -22,41 +68,3 @@ def getULItr(iterable_obj):
         except StopIteration:
             itr = iter(iterable_obj)
             yield next(itr)
-
-
-def getDataLoaders(t_bs, v_bs, r_bs):
-    if wandb.config.db == "MNIST":
-        db = torchvision.datasets.MNIST
-    elif wandb.config.db == "CIFAR10":
-        db = torchvision.datasets.CIFAR10
-    else:
-        raise NotImplementedError("Dataset " + str(db) + " is not implemented")
-    data = db(root = './dataset/',
-              train = True, download = True,
-              transform = getTransforms())
-    if CODE_TEST:
-        subset = list(range(0,len(data), int(len(data)/100)))
-        data = torch.utils.data.Subset(data, subset)
-
-    train_loader = torch.utils.data.DataLoader(data,
-                                              batch_size = t_bs,
-                                              shuffle = True,
-                                              num_workers = 4)
-
-    data = db(root = './dataset/',
-              train = False, download = True,
-              transform = getTransforms())
-    validate_loader = torch.utils.data.DataLoader(data,
-                                                  batch_size = v_bs,
-                                                  shuffle = True,
-                                                  num_workers = 4)
-
-    data = db(root = './dataset/',
-              train = True, download = True,
-              transform = getTransforms())
-    ref_loader = torch.utils.data.DataLoader(data,
-                                             batch_size = r_bs,
-                                             shuffle = True,
-                                             num_workers = 4)
-     
-    return train_loader, validate_loader, ref_loader
