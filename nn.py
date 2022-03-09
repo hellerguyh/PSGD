@@ -41,11 +41,17 @@ class NoisyOptim(Optimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
+            # Separate into two for loops so we can show loss after gd and
+            # before adding noise
             for i, param in enumerate(params_with_grad):
                 d_p = d_p_list[i]
                 param.add_(d_p, alpha = -lr)
 
-                if self.noise_std > 0:
+            if not (closure is None):
+                closure()
+
+            if self.noise_std > 0:
+                for i, param in enumerate(params_with_grad):
                     mean = torch.zeros(param.shape)
                     noise = torch.normal(mean, self.noise_std).to(device)
                     param.add_(noise, alpha = -lr)

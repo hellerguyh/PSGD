@@ -37,7 +37,7 @@ def _main(config=None):
     print(log)
     if not (config['path'] is None):
         with open(config['path'][:-4] + "_val_acc_" +\
-                  str(float(log['val_acc'][-1].data)) + config['path'][-4:],
+                  str(log['val_acc'][-1]) + config['path'][-4:],
                   'wb') as wf:
             log.update(config)
             pickle.dump(log, wf)

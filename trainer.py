@@ -32,12 +32,9 @@ class Trainer(object):
         
         return loss, corr, outputs
 
-    def updateWeights(self, loss, optimizer):
+    def gradStep(self, loss, optimizer, inputs, labels, criterion, model_ft):
         loss.backward()
         optimizer.step()
-    
-    def gradStep(self, loss, optimizer, inputs, labels, criterion, model_ft):
-        self.updateWeights(loss, optimizer)
 
     def valLoop(self, model_ft, criterion, dl, loss_arr, acc_arr, ds_len):
         logger_itr = logProgress(len(dl))
@@ -50,8 +47,8 @@ class Trainer(object):
                 loss, corr,_ = self.predict(inputs, labels, criterion,
                                             model_ft)
                 
-                loss_sum += loss.detach().data
-                corr_sum += corr
+                loss_sum += float(loss.detach().cpu().data)
+                corr_sum += float(corr.cpu().data)
             loss_arr.append(loss_sum)
             acc_arr.append(corr_sum/ds_len)
         self.wblogger.set('val_loss', loss_sum)
@@ -85,8 +82,8 @@ class Trainer(object):
                 optimizer.zero_grad()
                 loss, corr,_ = self.predict(inputs, labels, criterion,
                                             model_ft)                
-                loss_sum += loss.detach().data
-                corr_sum += corr
+                loss_sum += float(loss.detach().cpu().data)
+                corr_sum += float(corr.cpu().data)
                 self.gradStep(loss, optimizer, inputs, labels, criterion,
                               model_ft)
                 self.wblogger.inc()
@@ -107,29 +104,39 @@ class MetaCollectTrainer(Trainer):
         self.wblogger.set('post_gd_loss', self.post_gd_loss_arr[-1])
         self.wblogger.set('pre_gd_r_loss', self.pre_gd_r_loss_arr[-1])
         self.wblogger.set('post_gd_r_loss', self.post_gd_r_loss_arr[-1])
+        self.wblogger.set('mid_gd_loss', self.mid_gd_loss_arr[-1])
+        self.wblogger.set('mid_gd_r_loss', self.mid_gd_r_loss_arr[-1])
         
     '''
     We want to collect the following debug data:
         1. difference in loss on current batch, before and after gradient step
         2. difference in loss on a reference batch, before and after gradient
            step
-        3. cosine similarity between the gradients
+        3. loss after gradients update and before adding the noise
     To accomadate 1, we will save the loss at each step before and after update
     '''
     def gradStep(self, loss, optimizer, inputs, labels, criterion, model_ft):
-        self.pre_gd_loss_arr.append(loss.detach().data)
+        def lossClosure():
+            with torch.no_grad():
+                tloss, _, _ = self.predict(inputs, labels, criterion, model_ft)
+                self.mid_gd_loss_arr.append(float(tloss.detach().cpu().data))
+                tloss, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
+                self.mid_gd_r_loss_arr.append(float(tloss.detach().cpu().data))
+
+        self.pre_gd_loss_arr.append(float(loss.detach().cpu().data))
         with torch.no_grad():
             tloss, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
-            self.pre_gd_r_loss_arr.append(tloss.detach().data)
+            self.pre_gd_r_loss_arr.append(float(tloss.detach().cpu().data))
 
-        self.updateWeights(loss, optimizer)
+        loss.backward()
+        optimizer.step(lossClosure)
 
         with torch.no_grad():
             tloss, _, _ = self.predict(inputs, labels, criterion, model_ft)
-            self.post_gd_loss_arr.append(tloss.detach().data)
+            self.post_gd_loss_arr.append(float(tloss.detach().cpu().data))
             
             tloss, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
-            self.post_gd_r_loss_arr.append(tloss.detach().data)
+            self.post_gd_r_loss_arr.append(float(tloss.detach().cpu().data))
         
         self._gradStepLogging()
         
@@ -141,6 +148,8 @@ class MetaCollectTrainer(Trainer):
         self.post_gd_loss_arr = []
         self.pre_gd_r_loss_arr = []
         self.post_gd_r_loss_arr = []
+        self.mid_gd_loss_arr = []
+        self.mid_gd_r_loss_arr = []
 
     def train(self, model, criterion, optimizer, ds_name, num_epochs,
               t_bs, v_bs, r_bs, cuda_id = -1):
@@ -154,5 +163,7 @@ class MetaCollectTrainer(Trainer):
                     'post_gd_loss'  : self.post_gd_loss_arr,
                     'pre_gd_r_loss' : self.pre_gd_r_loss_arr,
                     'post_gd_r_loss': self.post_gd_r_loss_arr,
+                    'mid_gd_loss'   : self.mid_gd_loss_arr,
+                    'mid_gd_r_loss'   : self.mid_gd_r_loss_arr,
                     })
         return log
