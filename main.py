@@ -76,6 +76,8 @@ if __name__ == "__main__":
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--cuda_id", type=int, default=0)
     parser.add_argument("--lr", type=float, default=DEFAULT_PARAMS['lr'])
+    parser.add_argument("--noise_std", type=float,
+                        default=DEFAULT_PARAMS['noise_std'])
     parser.add_argument("--path", type=str, default=None)
     args = parser.parse_args()
     vargs = vars(args)
