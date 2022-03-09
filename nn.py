@@ -46,7 +46,6 @@ class NoisyOptim(Optimizer):
                 param.add_(d_p, alpha = -lr)
 
                 if self.noise_std > 0:
-                    sigma = self.noise_std 
                     mean = torch.zeros(param.shape)
                     noise = torch.normal(mean, self.noise_std).to(device)
                     param.add_(noise, alpha = -lr)
