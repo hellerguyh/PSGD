@@ -15,7 +15,10 @@ DEFAULT_PARAMS = {
     'lr': 0.001,  # learning rate
     'epochs': 1,  # Number of epochs to run
     'nn_type': 'ResNet18',  # backbone
-    'db': 'CIFAR10'  # database
+    'db': 'CIFAR10',  # database
+    'noise_retry': True,  # Apply noise until it doesn't hurt the loss or
+                         # maximum retries threshold was reached
+    'noise_retry_thrsld' : 50
 }
 
 
@@ -29,10 +32,16 @@ def _main(config=None):
     criterion = nn.CrossEntropyLoss(reduction='mean')
 
     optimizer = NoisyOptim(model_ft.parameters(), lr, config['clip_v'],
-                           config['noise_std'], config['cuda_id'])
+                           config['noise_std'], config['cuda_id'],
+                           (config['noise_retry'], config['noise_retry_thrsld']))
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
-                        config['train_bs'], config['val_bs'], config['ref_bs'], config['cuda_id'])
+                        config['train_bs'], config['val_bs'], config['ref_bs'],
+                        config['cuda_id'])
+
+    avg_nos_tries = float(optimizer.total_nos_repeats/optimizer.number_of_steps)
+    trainer.wblogger.set('avg_nos_tries', avg_nos_tries)
+    print(avg_nos_tries)
 
     print(log)
     if not (config['path'] is None):
@@ -74,6 +83,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Create Victims")
     parser.add_argument("--sweep", action="store_true")
+    parser.add_argument("--noise_retry", action="store_true")
+    parser.add_argument("--noise_retry_thrsld", type=int,
+                         default=DEFAULT_PARAMS['noise_retry_thrsld'])
     parser.add_argument("--cuda_id", type=int, default=0)
     parser.add_argument("--lr", type=float, default=DEFAULT_PARAMS['lr'])
     parser.add_argument("--noise_std", type=float,

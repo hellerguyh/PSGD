@@ -106,6 +106,7 @@ class MetaCollectTrainer(Trainer):
         self.wblogger.set('post_gd_r_loss', self.post_gd_r_loss_arr[-1])
         self.wblogger.set('mid_gd_loss', self.mid_gd_loss_arr[-1])
         self.wblogger.set('mid_gd_r_loss', self.mid_gd_r_loss_arr[-1])
+        self.wblogger.set('noise_retries', self.noise_retries_arr[-1])
         
     '''
     We want to collect the following debug data:
@@ -116,12 +117,19 @@ class MetaCollectTrainer(Trainer):
     To accomadate 1, we will save the loss at each step before and after update
     '''
     def gradStep(self, loss, optimizer, inputs, labels, criterion, model_ft):
-        def lossClosure():
+        def lossClosure(state):
             with torch.no_grad():
                 tloss, _, _ = self.predict(inputs, labels, criterion, model_ft)
-                self.mid_gd_loss_arr.append(float(tloss.detach().cpu().data))
-                tloss, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
-                self.mid_gd_r_loss_arr.append(float(tloss.detach().cpu().data))
+                tloss = float(tloss.detach().cpu().data)
+                tloss_r, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
+                tloss_r = float(tloss_r.detach().cpu().data)
+                if state == 'mid':
+                    self.mid_gd_loss_arr.append(tloss)
+                    self.mid_gd_r_loss_arr.append(tloss_r)
+                else:
+                    self.post_gd_loss_arr.append(tloss)
+                    self.post_gd_r_loss_arr.append(tloss_r)
+                return tloss, self
 
         self.pre_gd_loss_arr.append(float(loss.detach().cpu().data))
         with torch.no_grad():
@@ -130,13 +138,6 @@ class MetaCollectTrainer(Trainer):
 
         loss.backward()
         optimizer.step(lossClosure)
-
-        with torch.no_grad():
-            tloss, _, _ = self.predict(inputs, labels, criterion, model_ft)
-            self.post_gd_loss_arr.append(float(tloss.detach().cpu().data))
-            
-            tloss, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
-            self.post_gd_r_loss_arr.append(float(tloss.detach().cpu().data))
         
         self._gradStepLogging()
         
@@ -150,6 +151,7 @@ class MetaCollectTrainer(Trainer):
         self.post_gd_r_loss_arr = []
         self.mid_gd_loss_arr = []
         self.mid_gd_r_loss_arr = []
+        self.noise_retries_arr = []
 
     def train(self, model, criterion, optimizer, ds_name, num_epochs,
               t_bs, v_bs, r_bs, cuda_id = -1):
@@ -165,5 +167,6 @@ class MetaCollectTrainer(Trainer):
                     'post_gd_r_loss': self.post_gd_r_loss_arr,
                     'mid_gd_loss'   : self.mid_gd_loss_arr,
                     'mid_gd_r_loss'   : self.mid_gd_r_loss_arr,
+                    'noise_retries_arr'   : self.noise_retries_arr,
                     })
         return log

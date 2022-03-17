@@ -11,16 +11,21 @@ from torch.optim.optimizer import Optimizer, required
 
 class NoisyOptim(Optimizer):
     def __init__(self, params, lr = required, clip_v = 0, noise_std = 0,
-                 cuda_device_id = 0):
+                 cuda_device_id = 0, noise_on_success = (False, -1)):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = params
         self.noise_std = noise_std
         self.clip_v = clip_v
+        self.nos = noise_on_success
+        self.total_nos_repeats = 0
+        self.number_of_steps = 0
         super(NoisyOptim, self).__init__(params, defaults)
 
     @torch.no_grad()
     def step(self, closure = None):
+        self.number_of_steps += 1
+
         if self.clip_v > 0:
             clip_grad_value_(self.modelParams, self.clip_v)
 
@@ -48,13 +53,26 @@ class NoisyOptim(Optimizer):
                 param.add_(d_p, alpha = -lr)
 
             if not (closure is None):
-                closure()
+                mid_loss, trainer = closure('mid')
+            ctr = 0
+            found = False
 
-            if self.noise_std > 0:
-                for i, param in enumerate(params_with_grad):
-                    mean = torch.zeros(param.shape)
-                    noise = torch.normal(mean, self.noise_std).to(device)
-                    param.add_(noise, alpha = -lr)
+            while (ctr == 0) or (self.nos[0] and (ctr < self.nos[1]) and not found):
+                self.total_nos_repeats += 1
+                if self.noise_std > 0:
+                    for i, param in enumerate(params_with_grad):
+                        mean = torch.zeros(param.shape)
+                        noise = torch.normal(mean, self.noise_std).to(device)
+                        param.add_(noise, alpha = -lr)
+
+                if not (closure is None):
+                    post_loss, trainer = closure('post')
+
+                if post_loss <= mid_loss:
+                    found = True
+                ctr += 1
+
+            trainer.noise_retries_arr.append(ctr)
 
 
 class NoisyNN(object):
