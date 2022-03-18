@@ -11,7 +11,8 @@ from torch.optim.optimizer import Optimizer, required
 
 class NoisyOptim(Optimizer):
     def __init__(self, params, lr = required, clip_v = 0, noise_std = 0,
-                 cuda_device_id = 0, noise_on_success = (False, -1)):
+                 cuda_device_id = 0, noise_on_success = (False, -1),
+                 noise_inc = 0):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = params
@@ -20,7 +21,13 @@ class NoisyOptim(Optimizer):
         self.nos = noise_on_success
         self.total_nos_repeats = 0
         self.number_of_steps = 0
+        self.noise_inc = noise_inc
         super(NoisyOptim, self).__init__(params, defaults)
+
+    def noise_step(self):
+        print("used noise = " + str(self.noise_std))
+        self.noise_std += self.noise_inc
+        print("new noise = " + str(self.noise_std))
 
     @torch.no_grad()
     def step(self, closure = None):
