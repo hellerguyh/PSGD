@@ -53,7 +53,7 @@ class NoisyOptim(Optimizer):
                 param.add_(d_p, alpha = -lr)
 
             if not (closure is None):
-                mid_loss, trainer = closure('mid')
+                mid_loss, mid_loss_r, trainer = closure('mid')
             ctr = 0
             found = False
 
@@ -66,13 +66,18 @@ class NoisyOptim(Optimizer):
                         param.add_(noise, alpha = -lr)
 
                 if not (closure is None):
-                    post_loss, trainer = closure('post')
+                    post_loss, post_loss_r, trainer = closure('post')
 
                 if post_loss <= mid_loss:
                     found = True
                 ctr += 1
 
-            trainer.noise_retries_arr.append(ctr)
+            if not (closure is None):
+                trainer.mid_gd_loss_arr.append(mid_loss)
+                trainer.mid_gd_r_loss_arr.append(mid_loss_r)
+                trainer.post_gd_loss_arr.append(post_loss)
+                trainer.post_gd_r_loss_arr.append(post_loss_r)
+                trainer.noise_retries_arr.append(ctr)
 
 
 class NoisyNN(object):
