@@ -26,12 +26,10 @@ DEFAULT_PARAMS = {
 def _main(config=None):
 
     if config['increment_noise'] and config['epochs'] > 1:
-        ref_noise = config['noise_std']
-        base_noise = ref_noise*config['noise_factor']
-        noise_delta = 2*(ref_noise*(1 - config['noise_factor']))/(config['epochs'] - 1)
+        noise_sched = NoiseScheduler(config['noise_std'], config['noise_factor'],
+                                     config['epochs'])
     else:
-        base_noise = config['noise_std']
-        noise_delta = 0 
+        noise_sched = None
 
     model = NoisyNN(config['nn_type'])
     device = torch.device("cuda:" + str(config['cuda_id']) if torch.cuda.is_available() else "cpu")
@@ -42,9 +40,9 @@ def _main(config=None):
     criterion = nn.CrossEntropyLoss(reduction='mean')
 
     optimizer = NoisyOptim(model_ft.parameters(), lr, config['clip_v'],
-                           base_noise, config['cuda_id'],
+                           config['noise_std'], config['cuda_id'],
                            (config['noise_retry'], config['noise_retry_thrsld']),
-                           noise_delta)
+                           noise_sched)
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
                         config['train_bs'], config['val_bs'], config['ref_bs'],
@@ -96,7 +94,7 @@ if __name__ == "__main__":
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--noise_retry", action="store_true")
     parser.add_argument("--increment_noise", action="store_true")
-    parser.add_argument("--noise_factor", type=float, default = 0.1)
+    parser.add_argument("--noise_factor", type=float, default = 0.55)
     parser.add_argument("--noise_retry_thrsld", type=int,
                          default=DEFAULT_PARAMS['noise_retry_thrsld'])
     parser.add_argument("--epochs", type=int,
@@ -120,7 +118,6 @@ if __name__ == "__main__":
         sweep_config = {
             'method': 'random',
             'parameters': {
-                'noise_std': {'values': [0, 1, 2, 4, 8]},
                 'ref_bs': {'values': [32, 64, 128]},
                 'lr': {'values': [0.001, 0.01]},
             }
