@@ -41,8 +41,8 @@ def _main(config=None):
 
     optimizer = NoisyOptim(model_ft.parameters(), lr, config['clip_v'],
                            config['noise_std'], config['cuda_id'],
-                           (config['noise_retry'], config['noise_retry_thrsld']),
-                           noise_sched)
+                           (config['noise_retry'], config['noise_retry_thrsld'],
+                           config['noise_retry_on_half']), noise_sched)
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
                         config['train_bs'], config['val_bs'], config['ref_bs'],
@@ -93,6 +93,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create Victims")
     parser.add_argument("--sweep", action="store_true")
     parser.add_argument("--noise_retry", action="store_true")
+    parser.add_argument("--noise_retry_on_half", action="store_true")
     parser.add_argument("--increment_noise", action="store_true")
     parser.add_argument("--noise_factor", type=float, default = 0.55)
     parser.add_argument("--noise_retry_thrsld", type=int,

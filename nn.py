@@ -33,14 +33,16 @@ class NoiseScheduler(object):
 
 class NoisyOptim(Optimizer):
     def __init__(self, params, lr = required, clip_v = 0, noise_std = 0,
-                 cuda_device_id = 0, noise_on_success = (False, -1),
+                 cuda_device_id = 0, noise_on_success = (False, -1, False),
                  noise_sched = None):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = params
         self.noise_std = noise_std
+        self.base_noise = noise_std
         self.clip_v = clip_v
-        self.nos = noise_on_success
+        self.nos = {'active' : noise_on_success[0], 'lim' : noise_on_success[1],
+                    'half_sched_way' : noise_on_success[2]}
         self.total_nos_repeats = 0
         self.number_of_steps = 0
         self.noise_sched = noise_sched
@@ -90,7 +92,14 @@ class NoisyOptim(Optimizer):
             ctr = 0
             found = False
 
-            while (ctr == 0) or (self.nos[0] and (ctr < self.nos[1]) and not found):
+            sched_reached = True
+            if self.nos['half_sched_way'] and (not (self.noise_sched is None)):
+                if self.noise_std < self.base_noise:
+                    sched_reached = False
+
+            while (ctr == 0) or\
+            (self.nos['active'] and (ctr < self.nos['lim']) and sched_reached\
+             and not found):
                 self.total_nos_repeats += 1
                 if self.noise_std > 0:
                     for i, param in enumerate(params_with_grad):
