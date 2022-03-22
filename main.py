@@ -31,9 +31,11 @@ def _main(config=None):
     lr = config['lr']
     criterion = nn.CrossEntropyLoss(reduction='mean')
 
-    optimizer = NoisyOptim(model_ft.parameters(), lr, config['clip_v'],
-                           config['noise_std'], config['cuda_id'],
-                           (config['noise_retry'], config['noise_retry_thrsld']))
+    optimizer = NoisyOptim(model_ft.parameters(), model_ft.named_parameters,
+                           lr, config['clip_v'], config['noise_std'],
+                           config['cuda_id'],
+                           (config['noise_retry'], config['noise_retry_thrsld'])
+                          )
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
                         config['train_bs'], config['val_bs'], config['ref_bs'],

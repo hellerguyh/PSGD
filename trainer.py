@@ -123,13 +123,7 @@ class MetaCollectTrainer(Trainer):
                 tloss = float(tloss.detach().cpu().data)
                 tloss_r, _, _ = self.predict(self.rinputs, self.rlabels, criterion, model_ft)
                 tloss_r = float(tloss_r.detach().cpu().data)
-                if state == 'mid':
-                    self.mid_gd_loss_arr.append(tloss)
-                    self.mid_gd_r_loss_arr.append(tloss_r)
-                else:
-                    self.post_gd_loss_arr.append(tloss)
-                    self.post_gd_r_loss_arr.append(tloss_r)
-                return tloss, self
+                return tloss, tloss_r, self
 
         self.pre_gd_loss_arr.append(float(loss.detach().cpu().data))
         with torch.no_grad():

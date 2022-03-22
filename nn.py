@@ -10,17 +10,32 @@ from torch.nn.utils import clip_grad_value_
 from torch.optim.optimizer import Optimizer, required
 
 class NoisyOptim(Optimizer):
-    def __init__(self, params, lr = required, clip_v = 0, noise_std = 0,
-                 cuda_device_id = 0, noise_on_success = (False, -1)):
+    def __init__(self, params, named_params_f, lr = required, clip_v = 0,
+                 noise_std = 0, cuda_device_id = 0,
+                 noise_on_success = (False, -1)):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = params
+        self.model_named_params_f = named_params_f
         self.noise_std = noise_std
         self.clip_v = clip_v
         self.nos = noise_on_success
         self.total_nos_repeats = 0
         self.number_of_steps = 0
         super(NoisyOptim, self).__init__(params, defaults)
+
+    '''
+    Returns a copy of the module weights
+    this is x2.5 faster implementation than copy.deepcopy(model.state_dict))
+    '''
+    def createCheckPoint(self):
+        a = copy.deepcopy(dict(self.model_named_params_f()))
+        return a
+
+    def loadCheckPoint(self, cp):
+        netp = dict(self.model_named_params_f())
+        for name in cp:
+            netp[name].data.copy_(cp[name].data)
 
     @torch.no_grad()
     def step(self, closure = None):
@@ -53,11 +68,12 @@ class NoisyOptim(Optimizer):
                 param.add_(d_p, alpha = -lr)
 
             if not (closure is None):
-                mid_loss, trainer = closure('mid')
-            ctr = 0
-            found = False
+                mid_loss, mid_loss_r, trainer = closure('mid')
 
-            while (ctr == 0) or (self.nos[0] and (ctr < self.nos[1]) and not found):
+            cp = self.createCheckPoint()
+            ctr = 0
+            retry_active = self.nos[0] and not (closure is None)
+            while (ctr == 0) or retry_active:
                 self.total_nos_repeats += 1
                 if self.noise_std > 0:
                     for i, param in enumerate(params_with_grad):
@@ -66,13 +82,20 @@ class NoisyOptim(Optimizer):
                         param.add_(noise, alpha = -lr)
 
                 if not (closure is None):
-                    post_loss, trainer = closure('post')
-
-                if post_loss <= mid_loss:
-                    found = True
+                    post_loss, post_loss_r, trainer = closure('post')
+                    if retry_active:
+                        if (post_loss <= mid_loss) or (ctr == self.nos[1]):
+                            retry_active = False
+                        else:
+                            self.loadCheckPoint(cp)
                 ctr += 1
 
-            trainer.noise_retries_arr.append(ctr)
+            if not (closure is None):
+                trainer.mid_gd_loss_arr.append(mid_loss)
+                trainer.mid_gd_r_loss_arr.append(mid_loss_r)
+                trainer.post_gd_loss_arr.append(post_loss)
+                trainer.post_gd_r_loss_arr.append(post_loss_r)
+                trainer.noise_retries_arr.append(ctr)
 
 
 class NoisyNN(object):
@@ -102,18 +125,6 @@ class NoisyNN(object):
         else:
             raise NotImplementedError(str(nn_type) +
                                       " model is not implemented")
-
-    '''
-    Returns a copy of the module weights
-    this is x2.5 faster implementation than copy.deepcopy(model.state_dict))
-    '''
-    def createCheckPoint(self):
-        return copy.deepcopy(dict(self.nn.named_parameters()))
-
-    def loadCheckPoint(self, cp):
-        netp = dict(self.nn.named_parameters())
-        for name in cp:
-            netp[name].data.copy_(cp[name].data)
 
     def saveWeights(self, path, use_wandb = False, wandb_run = None):
         torch.save(self.nn.state_dict(), path)
