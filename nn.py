@@ -10,19 +10,19 @@ from torch.nn.utils import clip_grad_value_
 from torch.optim.optimizer import Optimizer, required
 
 class NoisyOptim(Optimizer):
-    def __init__(self, params, named_params_f, lr = required, clip_v = 0,
+    def __init__(self, params_gen_f, named_params_f, lr = required, clip_v = 0,
                  noise_std = 0, cuda_device_id = 0,
                  noise_on_success = (False, -1)):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
-        self.modelParams = params
+        self.modelParams = list(params_gen_f())
         self.model_named_params_f = named_params_f
         self.noise_std = noise_std
         self.clip_v = clip_v
         self.nos = noise_on_success
         self.total_nos_repeats = 0
         self.number_of_steps = 0
-        super(NoisyOptim, self).__init__(params, defaults)
+        super(NoisyOptim, self).__init__(params_gen_f(), defaults)
 
     '''
     Returns a copy of the module weights
