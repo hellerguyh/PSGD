@@ -18,11 +18,22 @@ DEFAULT_PARAMS = {
     'db': 'CIFAR10',  # database
     'noise_retry': True,  # Apply noise until it doesn't hurt the loss or
                          # maximum retries threshold was reached
-    'noise_retry_thrsld' : 50
+    'noise_retry_thrsld' : 50,
+    'noise_scheduler' : False,
 }
 
 
 def _main(config=None):
+
+    if config['noise_scheduler']:
+        noise_sched = NoiseSchedulerFactory(config['noise_std'],
+                                            config['ns_factor'],
+                                            config['epochs'],
+                                            config['ns_step_start'],
+                                            ns_type = config['ns_type'])
+    else:
+        noise_sched = None
+
     model = NoisyNN(config['nn_type'])
     device = torch.device("cuda:" + str(config['cuda_id']) if torch.cuda.is_available() else "cpu")
     model_ft = model.nn
@@ -34,8 +45,8 @@ def _main(config=None):
     optimizer = NoisyOptim(model_ft.parameters, model_ft.named_parameters,
                            lr, config['clip_v'], config['noise_std'],
                            config['cuda_id'],
-                           (config['noise_retry'], config['noise_retry_thrsld'])
-                          )
+                           (config['noise_retry'], config['noise_retry_thrsld']),
+                           noise_sched)
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
                         config['train_bs'], config['val_bs'], config['ref_bs'],
@@ -92,7 +103,13 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=DEFAULT_PARAMS['lr'])
     parser.add_argument("--noise_std", type=float,
                         default=DEFAULT_PARAMS['noise_std'])
+    parser.add_argument("--epochs", type=int,
+                         default=DEFAULT_PARAMS['epochs'])
     parser.add_argument("--path", type=str, default=None)
+    parser.add_argument("--noise_scheduler", action="store_true")
+    parser.add_argument("--ns_type", type=str, default=None)
+    parser.add_argument("--ns_factor", type=float, default = 0.55)
+    parser.add_argument("--ns_step_start", type=int, default = 5)
     args = parser.parse_args()
     vargs = vars(args)
     load_default_params(vargs)

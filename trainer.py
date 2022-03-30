@@ -90,6 +90,7 @@ class Trainer(object):
             t_loss_arr.append(loss_sum)
             t_acc_arr.append(corr_sum/td_len)
             self.valLoop(model_ft, criterion, v_dl, v_loss_arr, v_acc_arr, vd_len)
+            optimizer.noise_sched_step()
         
         return {
                 'train_loss': t_loss_arr, 

@@ -9,10 +9,69 @@ import torchvision as tv
 from torch.nn.utils import clip_grad_value_
 from torch.optim.optimizer import Optimizer, required
 
+
+class NoiseScheduler(object):
+    def __init__(self, noise_std, factor, epochs, step_start):
+        self.noise_std = noise_std
+        self.factor = factor
+        self.epochs = epochs
+        self.step_start = step_start
+
+    def step(self):
+        return NotImplemented()
+
+    def getNoise(self):
+        return self.cur_noise
+
+
+class ContNoiseScheduler(NoiseScheduler):
+    def __init__(self, *args):
+        super(ContNoiseScheduler, self).__init__(*args)
+        if self.factor < 0.5:
+            raise Exception("noise factor must be greater than 0.5, otherwise\
+                            we will get negative noise")
+
+        self.std = self.noise_std
+        self.cur_noise = self.factor*self.noise_std
+        self.rho = 1/self.factor
+        self.beta = self.rho
+
+    def step(self):
+        self.beta += 2*(1 - self.rho)/(self.epochs - 1)
+        self.cur_noise = self.std/self.beta
+
+
+class StepNoiseScheduler(NoiseScheduler):
+    def __init__(self, *args):
+        super(StepNoiseScheduler, self).__init__(*args)
+        if self.step_start < 1:
+            raise Exception("Cant start step on the first epoch, i.e. on epoch\
+                             0")
+        if self.factor <= self.step_start/self.epochs:
+            raise Exception("can't waste all your privacy budget on the first step")
+        self.std = self.noise_std
+        self.cur_noise = self.factor*self.noise_std
+        self.steps = 0
+
+    def step(self):
+        if self.steps == self.step_start - 1:
+            alpha = (self.epochs - self.step_start)/(self.epochs - self.step_start/self.factor)
+            self.cur_noise = alpha*self.std
+        self.steps += 1
+
+def NoiseSchedulerFactory(*args, ns_type):
+    if ns_type == 'step':
+        cls = StepNoiseScheduler
+    elif ns_type == 'inc':
+        cls = ContNoiseScheduler
+    else:
+        raise NotImplemented()
+    return cls(*args)
+
 class NoisyOptim(Optimizer):
     def __init__(self, params_gen_f, named_params_f, lr = required, clip_v = 0,
                  noise_std = 0, cuda_device_id = 0,
-                 noise_on_success = (False, -1)):
+                 noise_on_success = (False, -1), noise_sched = None):
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = list(params_gen_f())
@@ -22,6 +81,9 @@ class NoisyOptim(Optimizer):
         self.nos = noise_on_success
         self.total_nos_repeats = 0
         self.number_of_steps = 0
+        self.noise_sched = noise_sched
+        if not (noise_sched is None):
+            self.noise_std = noise_sched.getNoise()
         super(NoisyOptim, self).__init__(params_gen_f(), defaults)
 
     '''
@@ -36,6 +98,14 @@ class NoisyOptim(Optimizer):
         netp = dict(self.model_named_params_f())
         for name in cp:
             netp[name].data.copy_(cp[name].data)
+
+    def noise_sched_step(self):
+        print("used noise = " + str(self.noise_std))
+        if not (self.noise_sched is None):
+            self.noise_sched.step()
+            self.noise_std = self.noise_sched.getNoise()
+        print("new noise = " + str(self.noise_std))
+
 
     @torch.no_grad()
     def step(self, closure = None):
