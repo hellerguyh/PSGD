@@ -59,11 +59,34 @@ class StepNoiseScheduler(NoiseScheduler):
             self.cur_noise = alpha*self.std
         self.steps += 1
 
+class ReverseStepNoiseScheduler(NoiseScheduler):
+    def __init__(self, *args):
+        super(ReverseStepNoiseScheduler, self).__init__(*args)
+        if self.step_start > self.epochs - 1:
+            raise Exception("step_start must be smaller than the number of epochs")
+
+        self.small_noise_epochs = self.epochs - self.step_start
+
+        if self.factor <= self.small_noise_epochs/self.epochs:
+            raise Exception("can't waste all your privacy budget on the small noise steps")
+
+        self.std = self.noise_std
+        alpha = (self.epochs - self.small_noise_epochs)/(self.epochs - self.small_noise_epochs/self.factor)
+        self.cur_noise = self.noise_std*alpha
+        self.steps = 0
+
+    def step(self):
+        if self.steps == self.step_start - 1:
+            self.cur_noise = self.factor*self.noise_std
+        self.steps += 1
+
 def NoiseSchedulerFactory(*args, ns_type):
     if ns_type == 'step':
         cls = StepNoiseScheduler
     elif ns_type == 'inc':
         cls = ContNoiseScheduler
+    elif ns_type == 'revstep':
+        cls = ReverseStepNoiseScheduler
     else:
         raise NotImplemented()
     return cls(*args)

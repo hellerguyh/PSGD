@@ -32,3 +32,10 @@ ns = NoiseSchedulerFactory(noise_std, factor, epochs, step_start, ns_type='inc')
 checkScheduler(ns, epochs, noise_std)
 
 
+noise_std = 2
+factor = 0.05
+epochs = 100
+step_start = 96
+ns = NoiseSchedulerFactory(noise_std, factor, epochs, step_start, ns_type='revstep')
+checkScheduler(ns, epochs, noise_std)
+
