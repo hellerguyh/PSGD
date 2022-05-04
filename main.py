@@ -7,16 +7,16 @@ DEFAULT_PARAMS = {
     'polling': True,  # Poll to check for best noise
     'all_samples': True,  # Take also batches which failed to improve
     'max_tries': 50,  # Maximum tries creating noise
-    'clip_v': 4,  # Clipping the gradients to this value
-    'noise_std': 0,  # Noise factor
+    'clip_v': 100,  # Clipping the gradients to this value
+    'noise_std': 0.1,  # Noise factor
     'train_bs': 32,  # Train batch size
     'val_bs': 32,  # Valdiation batch size
     'ref_bs': 32,  # reference batch size
-    'lr': 0.001,  # learning rate
-    'epochs': 1,  # Number of epochs to run
+    'lr': 0.01,  # learning rate
+    'epochs': 40,  # Number of epochs to run
     'nn_type': 'ResNet18',  # backbone
     'db': 'CIFAR10',  # database
-    'noise_retry': True,  # Apply noise until it doesn't hurt the loss or
+    'noise_retry': False,  # Apply noise until it doesn't hurt the loss or
                          # maximum retries threshold was reached
     'noise_retry_thrsld' : 50,
     'noise_scheduler' : False,
@@ -80,10 +80,10 @@ def load_default_params(d):
 
 def main(config=None):
     if useWB():
-        with wandb.init(name='Test Run', \
-                        project='PolledSGD', \
-                        notes='This is a test run', \
-                        tags=['LOCAL', 'SUBSET_DATA', 'MetaData-Collect'], \
+        with wandb.init(name=config['run_name'],
+                        project='PSGD-Summary-May',
+                        notes = '',
+                        tags = ['LAB'],
                         entity='hellerg-biu-dp',
                         config=config):
             _main(wandb.config)
@@ -110,6 +110,8 @@ if __name__ == "__main__":
     parser.add_argument("--ns_type", type=str, default=None)
     parser.add_argument("--ns_factor", type=float, default = 0.55)
     parser.add_argument("--ns_step_start", type=int, default = 5)
+    parser.add_argument("--run_name", type=str, default = "Unnamed")
+    parser.add_argument("--ref_bs", type=int, default = DEFAULT_PARAMS['ref_bs'])
     args = parser.parse_args()
     vargs = vars(args)
     load_default_params(vargs)
@@ -124,13 +126,12 @@ if __name__ == "__main__":
         sweep_config = {
             'method': 'random',
             'parameters': {
-                'noise_std': {'values': [0, 1, 2, 4, 8]},
-                'ref_bs': {'values': [32, 64, 128]},
-                'lr': {'values': [0.001, 0.01]},
+                'noise_std': {'values': [0.1]},
+                'lr': {'values': [0.01]},
             }
         }
         for k in vargs:
             if not k in sweep_config['parameters']:
                 sweep_config['parameters'][k] = {'values': [vargs[k]]}
-        sweep_id = wandb.sweep(sweep_config, project="PolledSGD")
-        wandb.agent(sweep_id, function=main, count=1)
+        sweep_id = wandb.sweep(sweep_config, project="PolledSGD", entity='hellerg-biu-dp')
+        wandb.agent(sweep_id, function=main, count=4)

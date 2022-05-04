@@ -2,8 +2,7 @@ import os
 import wandb
 
 def useWB():
-    return os.getenv('WANDB_ACTIVE_DEBUG', False) == 'True'
-
+    return not os.getenv('WANDB_ACTIVE_DEBUG', False) == 'False'
 
 class WBLogger(object):
     def __init__(self):

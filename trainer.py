@@ -137,6 +137,7 @@ class MetaCollectTrainer(Trainer):
         self._gradStepLogging()
         
     def trainPreprocess(self, ds_name, r_bs):
+        print("Using reference batch size of " + str(r_bs))
         r_dl, _ = getDL(r_bs, True, ds_name)
         itr = iter(r_dl)
         self.rinputs, self.rlabels = next(itr)
