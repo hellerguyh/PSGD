@@ -100,14 +100,20 @@ class Trainer(object):
                 }
 
 class MetaCollectTrainer(Trainer):
+
+    def wblogger_update(self, name, arr):
+        if len(arr) > 0:
+            self.wblogger.set(name, arr[-1])
+
     def _gradStepLogging(self):
-        self.wblogger.set('pre_gd_loss', self.pre_gd_loss_arr[-1])
-        self.wblogger.set('post_gd_loss', self.post_gd_loss_arr[-1])
-        self.wblogger.set('pre_gd_r_loss', self.pre_gd_r_loss_arr[-1])
-        self.wblogger.set('post_gd_r_loss', self.post_gd_r_loss_arr[-1])
-        self.wblogger.set('mid_gd_loss', self.mid_gd_loss_arr[-1])
-        self.wblogger.set('mid_gd_r_loss', self.mid_gd_r_loss_arr[-1])
-        self.wblogger.set('noise_retries', self.noise_retries_arr[-1])
+        self.wblogger_update('pre_gd_loss', self.pre_gd_loss_arr)
+        self.wblogger_update('post_gd_loss', self.post_gd_loss_arr)
+        self.wblogger_update('pre_gd_r_loss', self.pre_gd_r_loss_arr)
+        self.wblogger_update('post_gd_r_loss', self.post_gd_r_loss_arr)
+        self.wblogger_update('mid_gd_loss', self.mid_gd_loss_arr)
+        self.wblogger_update('mid_gd_r_loss', self.mid_gd_r_loss_arr)
+        self.wblogger_update('noise_retries', self.noise_retries_arr)
+        self.wblogger_update('accept_reject', self.accept_rej_arr)
         
     '''
     We want to collect the following debug data:
@@ -148,6 +154,7 @@ class MetaCollectTrainer(Trainer):
         self.mid_gd_loss_arr = []
         self.mid_gd_r_loss_arr = []
         self.noise_retries_arr = []
+        self.accept_rej_arr = []
 
     def train(self, model, criterion, optimizer, ds_name, num_epochs,
               t_bs, v_bs, r_bs, cuda_id = -1):
@@ -164,5 +171,6 @@ class MetaCollectTrainer(Trainer):
                     'mid_gd_loss'   : self.mid_gd_loss_arr,
                     'mid_gd_r_loss'   : self.mid_gd_r_loss_arr,
                     'noise_retries_arr'   : self.noise_retries_arr,
+                    'accept_reject_arr' : self.accept_rej_arr,
                     })
         return log

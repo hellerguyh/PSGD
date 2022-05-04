@@ -20,6 +20,7 @@ DEFAULT_PARAMS = {
                          # maximum retries threshold was reached
     'noise_retry_thrsld' : 50,
     'noise_scheduler' : False,
+    'accept_rej' : False,
 }
 
 
@@ -46,7 +47,7 @@ def _main(config=None):
                            lr, config['clip_v'], config['noise_std'],
                            config['cuda_id'],
                            (config['noise_retry'], config['noise_retry_thrsld']),
-                           noise_sched)
+                           noise_sched, config['accept_rej'])
     trainer = MetaCollectTrainer()
     log = trainer.train(model, criterion, optimizer, config['db'], config['epochs'],
                         config['train_bs'], config['val_bs'], config['ref_bs'],
@@ -112,6 +113,7 @@ if __name__ == "__main__":
     parser.add_argument("--ns_step_start", type=int, default = 5)
     parser.add_argument("--run_name", type=str, default = "Unnamed")
     parser.add_argument("--ref_bs", type=int, default = DEFAULT_PARAMS['ref_bs'])
+    parser.add_argument("--accept_rej", action="store_true")
     args = parser.parse_args()
     vargs = vars(args)
     load_default_params(vargs)

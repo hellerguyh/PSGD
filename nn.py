@@ -94,7 +94,12 @@ def NoiseSchedulerFactory(*args, ns_type):
 class NoisyOptim(Optimizer):
     def __init__(self, params_gen_f, named_params_f, lr = required, clip_v = 0,
                  noise_std = 0, cuda_device_id = 0,
-                 noise_on_success = (False, -1), noise_sched = None):
+                 noise_on_success = (False, -1), noise_sched = None,
+                 accept_rej = False):
+        if accept_rej and noise_on_success[0]:
+            raise Exception("Accept Reject can't work with noise on success")
+        if noise_std == 0 and noise_on_success[0]:
+            print("Are you sure you want to use noise retry w. noise_std == 0?")
         self.cuda_device_id = cuda_device_id
         defaults = dict(lr = lr)
         self.modelParams = list(params_gen_f())
@@ -105,6 +110,7 @@ class NoisyOptim(Optimizer):
         self.total_nos_repeats = 0
         self.number_of_steps = 0
         self.noise_sched = noise_sched
+        self.accept_rej = accept_rej
         if not (noise_sched is None):
             self.noise_std = noise_sched.getNoise()
         super(NoisyOptim, self).__init__(params_gen_f(), defaults)
@@ -129,6 +135,61 @@ class NoisyOptim(Optimizer):
             self.noise_std = self.noise_sched.getNoise()
         print("new noise = " + str(self.noise_std))
 
+    def getDevice(self):
+        cid = self.cuda_device_id
+        if cid == -1:
+            device = torch.device("cpu")
+        else:
+            device = torch.device("cuda:" + str(cid)
+                                  if torch.cuda.is_available() else "cpu")
+        return device
+
+    @torch.no_grad()
+    def retry_noise_add(self, device, closure, params_with_grad, lr,
+                        mid_loss):
+        cp = self.createCheckPoint()
+        ctr = 0
+        retry_active = self.nos[0] and not (closure is None)
+        while (ctr == 0) or retry_active:
+            self.total_nos_repeats += 1
+            if self.noise_std > 0:
+                for i, param in enumerate(params_with_grad):
+                    mean = torch.zeros(param.shape)
+                    noise = torch.normal(mean, self.noise_std).to(device)
+                    param.add_(noise, alpha = -lr)
+
+            if not (closure is None):
+                post_loss, post_loss_r, trainer = closure('post')
+                if retry_active:
+                    if (post_loss <= mid_loss) or (ctr == self.nos[1]):
+                        retry_active = False
+                    else:
+                        self.loadCheckPoint(cp)
+            ctr += 1
+
+        trainer.noise_retries_arr.append(ctr)
+        return post_loss, post_loss_r, trainer
+
+    @torch.no_grad()
+    def pre_accept_rej(self):
+        self.accept_rej_cp = self.createCheckPoint()
+
+    @torch.no_grad()
+    def accept_rej_step(self, device, closure, params_with_grad, lr,
+                        mid_loss_r):
+        for i, param in enumerate(params_with_grad):
+            mean = torch.zeros(param.shape)
+            noise = torch.normal(mean, self.noise_std).to(device)
+            param.add_(noise, alpha = -lr)
+
+        post_loss, post_loss_r, trainer = closure('post')
+        if (post_loss_r > mid_loss_r):
+            self.loadCheckPoint(self.accept_rej_cp)
+            trainer.accept_rej_arr.append(0)
+        else:
+            trainer.accept_rej_arr.append(1)
+
+        return post_loss, post_loss_r, trainer
 
     @torch.no_grad()
     def step(self, closure = None):
@@ -137,17 +198,15 @@ class NoisyOptim(Optimizer):
         if self.clip_v > 0:
             clip_grad_value_(self.modelParams, self.clip_v)
 
-        cid = self.cuda_device_id
-        if cid == -1:
-            device = torch.device("cpu")
-        else:
-            device = torch.device("cuda:" + str(cid)
-                                  if torch.cuda.is_available() else "cpu")
-        
+        device = self.getDevice()
+
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
             lr = group['lr']
+
+            if self.accept_rej:
+                self.pre_accept_rej()
 
             for p in group['params']:
                 if p.grad is not None:
@@ -163,32 +222,19 @@ class NoisyOptim(Optimizer):
             if not (closure is None):
                 mid_loss, mid_loss_r, trainer = closure('mid')
 
-            cp = self.createCheckPoint()
-            ctr = 0
-            retry_active = self.nos[0] and not (closure is None)
-            while (ctr == 0) or retry_active:
-                self.total_nos_repeats += 1
-                if self.noise_std > 0:
-                    for i, param in enumerate(params_with_grad):
-                        mean = torch.zeros(param.shape)
-                        noise = torch.normal(mean, self.noise_std).to(device)
-                        param.add_(noise, alpha = -lr)
-
-                if not (closure is None):
-                    post_loss, post_loss_r, trainer = closure('post')
-                    if retry_active:
-                        if (post_loss <= mid_loss) or (ctr == self.nos[1]):
-                            retry_active = False
-                        else:
-                            self.loadCheckPoint(cp)
-                ctr += 1
+            if self.accept_rej:
+                res = self.accept_rej_step(device, closure, params_with_grad,
+                                           lr, mid_loss_r)
+            else:
+                res = self.retry_noise_add(device, closure, params_with_grad,
+                                           lr, mid_loss)
+            post_loss, post_loss_r, trainer = res
 
             if not (closure is None):
                 trainer.mid_gd_loss_arr.append(mid_loss)
                 trainer.mid_gd_r_loss_arr.append(mid_loss_r)
                 trainer.post_gd_loss_arr.append(post_loss)
                 trainer.post_gd_r_loss_arr.append(post_loss_r)
-                trainer.noise_retries_arr.append(ctr)
 
 
 class NoisyNN(object):
